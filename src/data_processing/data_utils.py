@@ -12,14 +12,19 @@ def read_jsonl(jsonl_path):
         print(line)
         break
 
-def get_pdb(pdb_id,pdir = ''):
+def get_pdb(pdb_id):
     pdb_list = PDBList()
-    pdb_list.retrieve_pdb_file(pdb_id, pdir = '.', file_format = 'mmCif')
-
-def parse_pdb(pdb_path):
-    
-
-
+    pdb_list.retrieve_pdb_file(pdb_id, pdir = '../../data/PDB/', file_format = 'mmCif')
 
 if __name__ == '__main__':
-    parse_pdb('./216l.cif')
+    pdb_list = read_json('../../data/chain_set_splits.json')
+    for chain in pdb_list['train']:
+        ent_id = chain.split('.')[0]
+        get_pdb(ent_id)
+    for chain in pdb_list['test']:
+        ent_id = chain.split('.')[0]
+        get_pdb(ent_id)
+    for chain in pdb_list['validation']:
+        ent_id = chain.split('.')[0]
+        get_pdb(ent_id)
+    
