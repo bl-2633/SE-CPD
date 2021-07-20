@@ -1,6 +1,6 @@
 import torch
 from se3_transformer_pytorch import SE3Transformer
-
+from torch import nn
 class SE3Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -9,11 +9,16 @@ class SE3Net(torch.nn.Module):
             heads = 1,
             depth = 1,
             dim_head = 32,
-            num_degrees = 1,
+            num_degrees = 2,
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(32, 20),
+            nn.ReLU(inplace = True)
         )
 
     def forward(self,feats, coors, mask):
         out = self.SE3_encoder(feats, coors, mask)
+        out = self.classifier(out)
         return out
 
 

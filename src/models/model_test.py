@@ -36,7 +36,7 @@ if __name__ == '__main__':
         scaler.update()
 
 
-    max_mem = torch.cuda.max_memory_cached(device)
+    max_mem = torch.cuda.max_memory_allocated(device)
     print('Sequence lenth = ' + str(seq_len))
     print('Feature Dimension = ' + str(feat_n))
     print('Coordinate Dimension = ' + str(coors_n))
