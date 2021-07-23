@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib
 import tqdm
 from multiprocessing import Pool
+import torch
+import os
 
 def read_json(json_path):
     data_dict = json.loads(open(json_path,'r').read())
@@ -32,7 +34,6 @@ def download_datasets():
         ent_id = chain.split('.')[0]
         get_pdb(ent_id)
 
-
 def backbone_angles(pre_atom, atom, next_atom):
     if pre_atom == None:
         phi = 0
@@ -46,8 +47,8 @@ def backbone_angles(pre_atom, atom, next_atom):
         phi = calc_dihedral(pre_atom['C'].get_vector(), atom['N'].get_vector(), atom['CA'].get_vector(), atom['C'].get_vector())
         psi = calc_dihedral(atom['N'].get_vector(), atom['CA'].get_vector(), atom['C'].get_vector(),next_atom['N'].get_vector())
         omega = calc_dihedral(atom['CA'].get_vector(), atom['C'].get_vector(), next_atom['N'].get_vector(), next_atom['CA'].get_vector())
-    
-    return (phi, psi, omega) 
+
+    return (phi, psi, omega)
 
 def calc_dihedral(v1, v2, v3, v4):
     angle = Bio.PDB.vectors.calc_dihedral(v1,v2,v3,v4)
@@ -66,18 +67,18 @@ def calc_contact(Ca_dict):
             distance_mtx[i][j] = dist
     return distance_mtx
 
-
-
 def cif_reader(pdb_file,chain_id):
     atom_dict = dict()
     res_dict = dict()
     Ca_dict = dict()
-    seq_len = 0 
-    
+    seq_len = 0
+
     pdb_id = pdb_file.split('/')[-1].split('.')[0]
     parser = MMCIFParser(QUIET=True)
-    struct = parser.get_structure(pdb_id, pdb_file)
-    
+    try:
+        struct = parser.get_structure(pdb_id, pdb_file)
+    except:
+        return None
     for chain in struct.get_chains():
         if chain.id == chain_id:
             for res in chain.get_residues():
@@ -94,7 +95,8 @@ def cif_reader(pdb_file,chain_id):
                     continue
                 atom_dict[seq_len] = res
                 seq_len += 1
-    
+            break
+
     angle_dict = dict()
     for i in range(0,seq_len):
         pre_res = None
@@ -107,27 +109,99 @@ def cif_reader(pdb_file,chain_id):
             next_res = atom_dict[i+1]
         angles = backbone_angles(pre_res, current_res, next_res)
         angle_dict[i] = angles
-    
+
     dist_mtx = calc_contact(Ca_dict)
     return res_dict, Ca_dict, angle_dict, dist_mtx
 
-def aa2onehot(aa):
-    return
+def aa2onehot(seq):
+    aa2index = {
+        'A':0,
+        'C':1,
+        'D':2,
+        'E':3,
+        'F':4,
+        'G':5,
+        'H':6,
+        'I':7,
+        'K':8,
+        'L':9,
+        'M':10,
+        'N':11,
+        'P':12,
+        'Q':13,
+        'R':14,
+        'S':15,
+        'T':16,
+        'V':17,
+        'W':18,
+        'Y':19
+    }
+    length = len(seq)
+    onehot = np.zeros((length,20))
+    for i, aa in enumerate(seq):
+        idx = aa2index[aa]
+        onehot[i][idx] = 1
+    return onehot
 
 def save_feat(chain_info):
+    save_path = '../../data/features/'
     data_dir = '../../data/PDB/'
     ent = chain_info.split('.')[0]
     chain_id = chain_info.split('.')[1]
     feats = cif_reader(data_dir + ent + '.cif', chain_id)
+    if feats == None:
+        return
+    seq = ''
+    Ca_coord = []
+    angles = []
+    for i in feats[0]:
+        seq += feats[0][i]
+        Ca_coord.append(feats[1][i])
+        angles.append(feats[2][i])
+    Ca_coord = torch.from_numpy(np.array(Ca_coord)).half()
+    one_hot = torch.from_numpy(aa2onehot(seq)).half()
+    angles = torch.from_numpy(np.array(angles)).half()
+    dist_mtx = torch.from_numpy(feats[3]).half()
+
+    assert one_hot.size(0) <= 500, 'sequence too long'
+
+    feat_dict = {'seq':one_hot, 'Ca_coord':Ca_coord, 'torsion_angles':angles, 'distance':dist_mtx}
+    
+    torch.save(feat_dict, save_path+ent+'-'+chain_id)
 
 def feature_gen():
     chain_dict = read_json('../../data/chain_set_splits.json')
-    with Pool(processes = 15) as p:
-        list(tqdm.tqdm(p.imap(save_feat, chain_dict['train']), total =len(chain_dict['train'])))
 
-    return
+    pool = Pool(processes = 30)
+    result_list_tqdm = []
+    for result in tqdm.tqdm(pool.imap_unordered(save_feat, chain_dict['validation']), total=len(chain_dict['validation'])):
+        result_list_tqdm.append(result)
+
+def data_check():
+    data_path = '../../data/features/' 
+    chain_dict = read_json('../../data/chain_set_splits.json')
+    with open('../../data/train.txt', 'w') as f:
+        for chain_id in chain_dict['train']:
+            feat_path = data_path + '-'.join(chain_id.split('.'))
+            if os.path.exists(feat_path):
+                f.write('-'.join(chain_id.split('.')) + '\n')
+    
+def rot_mtx(alpha, beta, gamma):
+    z = np.array(
+        [[np.cos(alpha), -np.sin(alpha), 0],
+        [np.sin(alpha), np.cos(alpha), 0],
+        [0,0,1]])
+    y = np.array(
+        [[np.cos(beta), 0, np.sin(beta)],
+        [0,1,0],
+        [-np.sin(beta), 0, np.cos(beta)]])
+    x = np.array(
+        [[1,0,0],
+        [0, np.cos(gamma), -np.sin(gamma)],
+        [0, np.sin(gamma), np.cos(gamma)]])
+    return z @ y @ x
+
 
 
 if __name__ == '__main__':
     feature_gen()
-    
