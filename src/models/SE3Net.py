@@ -4,20 +4,30 @@ from torch import nn
 class SE3Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
+        self.feat_dim = 64
         self.SE3_encoder  = SE3Transformer(
-            dim = 32,
-            heads = 1,
+            dim = self.feat_dim,
+            heads = 2,
             depth = 1,
-            dim_head = 32,
-            num_degrees = 2,
-        )
-        self.classifier = nn.Sequential(
-            nn.Linear(32, 20),
-            nn.ReLU(inplace = True)
+            dim_head = 64,
+            num_degrees = 1,
+            edge_dim = 1
         )
 
-    def forward(self,feats, coors, mask):
-        out = self.SE3_encoder(feats, coors, mask)
+        self.feat_enc = nn.Sequential(
+            nn.Linear(6, self.feat_dim),
+            nn.ReLU(inplace = True)
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(64, 20),
+            nn.Softmax(dim = 2)
+        )
+
+    def forward(self,feats, coors, mask, edges):
+        feats = torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
+        feats = self.feat_enc(feats)
+        out = self.SE3_encoder(feats, coors, mask, edges = edges)
         out = self.classifier(out)
         return out
 
