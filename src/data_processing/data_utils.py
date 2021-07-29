@@ -84,11 +84,12 @@ def cif_reader(pdb_file,chain_id):
             for res in chain.get_residues():
                 if Polypeptide.is_aa(res, standard = True):
                     try:
-                        Ca_dict[seq_len] = res['CA'].get_vector().get_array()
+                        res['CA'].get_vector()
                         res['N'].get_vector()
                         res['C'].get_vector()
                     except:
                         continue
+                    Ca_dict[seq_len] = res['CA'].get_vector().get_array()
                     res_dict[seq_len] = Polypeptide.three_to_one(res.get_resname())
                     atom_dict[seq_len] = dict()
                 else:
@@ -111,6 +112,7 @@ def cif_reader(pdb_file,chain_id):
         angle_dict[i] = angles
 
     dist_mtx = calc_contact(Ca_dict)
+
     return res_dict, Ca_dict, angle_dict, dist_mtx
 
 def aa2onehot(seq):
@@ -174,7 +176,7 @@ def feature_gen():
 
     pool = Pool(processes = 30)
     result_list_tqdm = []
-    for result in tqdm.tqdm(pool.imap_unordered(save_feat, chain_dict['validation']), total=len(chain_dict['validation'])):
+    for result in tqdm.tqdm(pool.imap_unordered(save_feat, chain_dict['test']), total=len(chain_dict['test'])):
         result_list_tqdm.append(result)
 
 def data_check():

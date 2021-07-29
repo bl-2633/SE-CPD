@@ -2,11 +2,12 @@ import torch
 import argparse
 from models import EnNet,data_loader
 import numpy as np
+import tqdm
 
 
 def sample(pred_dist):
-    
-    return
+    out_idx = torch.multinomial(torch.tensor(pred_dist), 1)
+    return out_idx
 
 def recovery(pred, gts):
     accuracy = []
@@ -49,7 +50,7 @@ if __name__ == '__main__':
     )
     args = parser.parse_args() 
     device = torch.device('cuda:' + args.Device)
-    model = EnNet.EnNet()
+    model = EnNet.EnNet(device = device)
     state_dcit = torch.load(args.Model_path, map_location = torch.device('cpu'))
     model.load_state_dict(state_dcit['state_dict'])
     model.to(device).eval()
@@ -58,12 +59,17 @@ if __name__ == '__main__':
     
     preds = []
     gts = []
+    pbar = tqdm.tqdm(total = test_dset.__len__())
     for seq, Ca_coord, torsion_angles, distance in test_dset:
+        pbar.update()
         Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         mask = torch.ones(1, seq.size(0)).bool().to(device) 
         with torch.cuda.amp.autocast():
-            out = model(torsion_angles, Ca_coord, distance, mask).cpu().detach().numpy().squeeze()
-        preds.append(out)
+            with torch.no_grad():
+                log_prob = model(torsion_angles, Ca_coord, distance, mask)
+
+        preds.append(np.exp(log_prob.cpu().detach().numpy().squeeze()))
+        #preds.append(out)
         gts.append(seq.detach().numpy())
     perp = perplexity(preds, gts)
     rec = recovery(preds, gts)

@@ -1,50 +1,122 @@
 import torch
-from en_transformer import EnTransformer
+from se3_transformer_pytorch import SE3Transformer
+
 from torch import nn
 import numpy as np
+import torch.nn.functional as F
 
 
 class EnNet(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
+        self.feat_dim = 32
+        self.device = device
 
-        self.feat_dim = 64
-
-        self.SEn_encoder_1 = EnTransformer(
+        self.SEn_encoder = SE3Transformer(
             dim = self.feat_dim,
-            depth = 8,
-            dim_head = 128,
-            coors_hidden_dim = 64,
-            heads = 8,
+            depth = 1,
+            dim_head = 32,
+            heads = 4,
+            num_degrees = 1,
             edge_dim = 1,
-            neighbors = 30,
+            egnn_hidden_dim = self.feat_dim,
+            use_egnn = True,
         )
 
+        self.SEn_decoder = SE3Transformer(
+            dim = self.feat_dim,
+            depth = 1,
+            dim_head = 32,
+            heads = 4,
+            num_degrees = 1,
+            edge_dim = 1,
+            egnn_hidden_dim = self.feat_dim,
+            use_egnn = True,
+            causal = True
+        )
+
+        # Input node feature encoder
         self.feat_enc = nn.Sequential(
             nn.Linear(6, self.feat_dim),
             nn.ReLU(inplace = True)
         )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(64, 20),
-            nn.Softmax(dim = 2)
+        self.seq_enc =nn.Sequential(
+            nn.Linear(20, self.feat_dim),
+            nn.ReLU(inplace = True)
         )
 
+        self.classifier = nn.Sequential(
+            nn.Linear(self.feat_dim, 20),
+        )
+
+
+
     def forward(self, feats, coors, edges, mask):
-        feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
-        feats = self.feat_enc(feats)
-        out_feat = self.SEn_encoder_1(feats, coors, edges, mask)[0]
-        out = self.classifier(out_feat)
-        return out
+        seq_len = feats.size(1)
+        # encoder 
+        in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
+        in_feats = self.feat_enc(in_feats)        
+        enc_out= self.SEn_encoder(in_feats, coors, mask, edges = edges)['0']
+        
+        
+        #decoder
+        decoder_feat = enc_out
+        dec_feat = self.SEn_decoder(decoder_feat, coors, mask, edges = edges)['0']
+        logits = self.classifier(dec_feat)
+        log_prob = F.log_softmax(logits, dim = 2)
+        # training does not require sampling sequences
+        ''''
+        for t in range(seq_len):
+            aa_t = torch.zeros(1,20)
+            aa_idx = torch.torch.multinomial(F.softmax(logits[0,t,:], dim = 0), 1).item()
+            aa_t[0,aa_idx] = 1
+            seq_out[0,t,:] = aa_t
+        '''
+        return log_prob
+        
+
+
+    def sample(self, feats, coors, edges, mask):
+        # encoder 
+        seq_len = feats.size(1)
+        in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
+        in_feats = self.feat_enc(in_feats)
+        enc_feat, enc_coors = self.SEn_encoder(in_feats, coors, edges, mask)
+        
+        seq_out = torch.zeros(1, seq_len, 20).to(self.device)
+        prob_out = torch.zeros(1, seq_len, 20).to(self.device)
+        for t in range(seq_len):
+            
+            #decoder
+            decoder_feat = self.seq_enc(seq_out) + enc_feat
+            dec_feat = self.SEn_decoder(decoder_feat, enc_coors, edges, mask)[0][0,t,:]
+            logits = self.classifier(dec_feat)
+            
+            #sampling step
+            aa_t = torch.zeros(1,20)
+            prob = F.softmax(logits, dim = 0) 
+            aa_idx = torch.torch.multinomial(prob, 1).item()
+            aa_t[0,aa_idx] = 1
+            seq_out[0,t,:] = aa_t
+            prob_out[0,t,:] = prob
+        
+        return seq_out, prob_out
+    
+    
 
 if __name__ == '__main__':
-    device = torch.device('cuda:1')
-    model = EnNet().to(device)
+    device = torch.device('cuda:0')
+    model = EnNet(device = device).to(device).eval()
     with torch.cuda.amp.autocast():
-        for i in range(100):
-            feats = torch.randn(1, 500, 32).to(device)
+        for i in range(10):
+            
+            feats = torch.randn(1, 500, 3).to(device)
             coors = torch.randn(1, 500, 3).to(device)
             edges = torch.randn(1, 500, 500, 1).to(device)
             mask = torch.ones(1, 500).bool().to(device)
-            out_feats, out_coors = model(feats, coors, edges, mask)
-            print(out_feats.size())
+            seq = torch.randn(1, 500, 20).to(device)
+            #out_feats, out_coors = model(feats, coors, edges, mask,seq)
+            prob_out = model(feats, coors, edges, mask, seq)
+            print(prob_out.size())
+            exit()
+            #print(out_feats.size())

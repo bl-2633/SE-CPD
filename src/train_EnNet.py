@@ -1,6 +1,6 @@
 import argparse
 import sys
-from models import data_loader, EnNet, BCE_loss
+from models import data_loader, EnNet, BCE_loss, NLL_loss
 import torch.optim as optim
 import torch
 import numpy as np
@@ -22,22 +22,20 @@ def train(param_dict, epoch, model_path):
     scaler = torch.cuda.amp.GradScaler()
 
     c = 0
-    optimizer.zero_grad()
     for seq, Ca_coord, torsion_angles, distance in train_loader:
-        
+        optimizer.zero_grad() 
         seq, Ca_coord, torsion_angles, distance = seq.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         mask = torch.ones(1, seq.size(1)).bool().to(device) 
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask)
             loss = loss_fn(out, seq)
         scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         running_loss.append(loss.item())
         pbar.update()
         c += 1
-        if c == 64:
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
+        if c == 100:
             pbar.set_description(str(epoch) + '/' + str(param_dict['train_epoch']) + ' ' + str(np.mean(running_loss))[:6])
             c = 0
         
@@ -75,11 +73,11 @@ if __name__ == "__main__":
     val_set = data_loader.CATH_data(feat_dir = '../data/features/', partition = 'validation')
 
     device = torch.device('cuda:'+ args.Device)
-    model = EnNet.EnNet().to(device)
-    optimizer = optim.Adam(model.parameters(), lr = 1e-3)
-    loss_fn = BCE_loss.BCE_loss()
+    model = EnNet.EnNet(device = device).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr = 1e-4)
+    loss_fn = NLL_loss.NLL_loss()
 
-    model_out = '../trained_models/EnTransformers/EnNet_8'
+    model_out = '../trained_models/EnTransformers/EnNet_4_batch_4'
 
     param_dict = {
         'train_epoch': 100,
