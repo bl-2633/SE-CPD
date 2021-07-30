@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch
 import numpy as np
 from tqdm import tqdm
-
+from se3_transformer_pytorch.utils import fourier_encode
 
 
 torch.manual_seed(100)
@@ -22,20 +22,22 @@ def train(param_dict, epoch, model_path):
     scaler = torch.cuda.amp.GradScaler()
 
     c = 0
+    optimizer.zero_grad()
     for seq, Ca_coord, torsion_angles, distance in train_loader:
-        optimizer.zero_grad() 
         seq, Ca_coord, torsion_angles, distance = seq.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         mask = torch.ones(1, seq.size(1)).bool().to(device) 
+        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask)
             loss = loss_fn(out, seq)
         scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
         running_loss.append(loss.item())
         pbar.update()
         c += 1
-        if c == 100:
+        if c == 16:
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
             pbar.set_description(str(epoch) + '/' + str(param_dict['train_epoch']) + ' ' + str(np.mean(running_loss))[:6])
             c = 0
         
@@ -44,6 +46,7 @@ def train(param_dict, epoch, model_path):
     for seq, Ca_coord, torsion_angles, distance in val_loader:
         seq, Ca_coord, torsion_angles, distance = seq.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         mask = torch.ones(1, seq.size(1)).bool().to(device)
+        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask)
             loss = loss_fn(out, seq)
@@ -74,10 +77,10 @@ if __name__ == "__main__":
 
     device = torch.device('cuda:'+ args.Device)
     model = EnNet.EnNet(device = device).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr = 1e-4)
+    optimizer = optim.AdamW(model.parameters(), lr = 1e-3)
     loss_fn = NLL_loss.NLL_loss()
 
-    model_out = '../trained_models/EnTransformers/EnNet_4_batch_4'
+    model_out = '../trained_models/EnTransformers/EnNet_1_batch_16_pe_fourier'
 
     param_dict = {
         'train_epoch': 100,

@@ -1,10 +1,11 @@
 import torch
 from se3_transformer_pytorch import SE3Transformer
-
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
-
+import sys
+sys.path.append('/mnt/storage_1/blai/projects/SE-CPD/src/models/')
+import PE_module
 
 class EnNet(torch.nn.Module):
     def __init__(self, device):
@@ -18,7 +19,7 @@ class EnNet(torch.nn.Module):
             dim_head = 32,
             heads = 4,
             num_degrees = 1,
-            edge_dim = 1,
+            edge_dim = 17,
             egnn_hidden_dim = self.feat_dim,
             use_egnn = True,
         )
@@ -29,11 +30,13 @@ class EnNet(torch.nn.Module):
             dim_head = 32,
             heads = 4,
             num_degrees = 1,
-            edge_dim = 1,
+            edge_dim = 17,
             egnn_hidden_dim = self.feat_dim,
             use_egnn = True,
             causal = True
         )
+
+        self.PE = PE_module.PositionalEncoding(d_model = self.feat_dim)
 
         # Input node feature encoder
         self.feat_enc = nn.Sequential(
@@ -52,10 +55,11 @@ class EnNet(torch.nn.Module):
 
 
     def forward(self, feats, coors, edges, mask):
-        seq_len = feats.size(1)
+
         # encoder 
         in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
-        in_feats = self.feat_enc(in_feats)        
+        in_feats = self.feat_enc(in_feats)
+        in_feats = self.PE(in_feats)
         enc_out= self.SEn_encoder(in_feats, coors, mask, edges = edges)['0']
         
         
