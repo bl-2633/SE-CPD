@@ -3,7 +3,7 @@ import argparse
 from models import EnNet,data_loader
 import numpy as np
 import tqdm
-
+from se3_transformer_pytorch.utils import fourier_encode
 
 def sample(pred_dist):
     out_idx = torch.multinomial(torch.tensor(pred_dist), 1)
@@ -64,6 +64,7 @@ if __name__ == '__main__':
         pbar.update()
         Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         mask = torch.ones(1, seq.size(0)).bool().to(device) 
+        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
                 log_prob = model(torsion_angles, Ca_coord, distance, mask)
