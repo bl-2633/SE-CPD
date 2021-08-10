@@ -1,6 +1,8 @@
 import numpy as np
+import os 
+dir_path = os.path.dirname(os.path.realpath(__file__))
 import sys
-sys.path.append('/mnt/storage_1/blai/projects/SE-CPD/src/data_processing/')
+sys.path.append('/'.join(dir_path.split('/')[:-1]) + '/data_processing')
 from numpy.core.fromnumeric import partition
 import torch
 from torch.utils import data as D
@@ -12,7 +14,7 @@ class CATH_data(D.Dataset):
     def __init__(self, feat_dir, partition):
         self.feat_dir = feat_dir
         assert partition in ['train', 'test', 'validation'], 'Please indicate train, test, validation partition'
-        self.chain_list = open('/mnt/storage_1/blai/projects/SE-CPD/data/' + partition + '.txt', 'r').readlines()
+        self.chain_list = open('/'.join(dir_path.split('/')[:-2]) + '/data/' + partition + '.txt', 'r').readlines()
         
         
     def __getitem__(self, index):

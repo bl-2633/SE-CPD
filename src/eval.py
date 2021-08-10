@@ -62,16 +62,16 @@ if __name__ == '__main__':
     pbar = tqdm.tqdm(total = test_dset.__len__())
     for seq, Ca_coord, torsion_angles, distance in test_dset:
         pbar.update()
-        Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
-        mask = torch.ones(1, seq.size(0)).bool().to(device) 
-        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
+        seq, Ca_coord, torsion_angles, distance = seq.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
+        mask = torch.ones(1, seq.size(1)).bool().to(device) 
+        #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
-                log_prob = model(torsion_angles, Ca_coord, distance, mask)
+                log_prob = model(torsion_angles, Ca_coord, distance, mask, seq)
 
-        preds.append(np.exp(log_prob.cpu().detach().numpy().squeeze()))
-        #preds.append(out)
-        gts.append(seq.detach().numpy())
+        #preds.append(np.exp(log_prob.cpu().detach().numpy().squeeze()))
+        preds.append(log_prob.cpu().detach().numpy().squeeze())
+        gts.append(seq.cpu().detach().numpy())
     perp = perplexity(preds, gts)
     rec = recovery(preds, gts)
     print(perp)
