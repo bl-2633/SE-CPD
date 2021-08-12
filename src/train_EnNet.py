@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from se3_transformer_pytorch.utils import fourier_encode
 from torch.utils.data import DataLoader
-
+import torch.nn.functional as F
 
 torch.manual_seed(100)
 
@@ -34,6 +34,10 @@ def train(param_dict, epoch, model_path):
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask, seq)
             loss = loss_fn(out, seq)
+        step += 1
+        rate = 2 * (64 ** (-0.5) * min(step ** (-0.5), step * 10000 ** (-1.5)))
+        for p in optimizer.param_groups:
+            p['lr'] = rate
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -83,9 +87,8 @@ if __name__ == "__main__":
     device = torch.device('cuda:'+ args.Device)
     model = EnNet.EnNet(device = device).to(device)
     optimizer = optim.AdamW(model.parameters(), lr = 1e-5)
-    loss_fn = BCE_loss.BCE_loss()
-
-    model_out = '../trained_models/EnTransformers/EnNet_4x4_batch_1'
+    loss_fn = NLL_loss.NLL_loss()
+    model_out = '../trained_models/EnTransformers/EnNet_4_NLL'
 
     param_dict = {
         'train_epoch': 100,

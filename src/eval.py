@@ -4,6 +4,7 @@ from models import EnNet,data_loader
 import numpy as np
 import tqdm
 from se3_transformer_pytorch.utils import fourier_encode
+import torch.nn.functional as F
 
 def sample(pred_dist):
     out_idx = torch.multinomial(torch.tensor(pred_dist), 1)
@@ -57,23 +58,25 @@ if __name__ == '__main__':
 
     test_dset = data_loader.CATH_data(feat_dir = '../data/features/', partition = 'test')
     
+    tmp_preds = []
     preds = []
     gts = []
     pbar = tqdm.tqdm(total = test_dset.__len__())
     for seq, Ca_coord, torsion_angles, distance in test_dset:
         pbar.update()
-        seq, Ca_coord, torsion_angles, distance = seq.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
-        mask = torch.ones(1, seq.size(1)).bool().to(device) 
+        Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
+        mask = torch.ones(1, seq.size(0)).bool().to(device) 
         #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
-                log_prob = model(torsion_angles, Ca_coord, distance, mask, seq)
-
-        #preds.append(np.exp(log_prob.cpu().detach().numpy().squeeze()))
-        preds.append(log_prob.cpu().detach().numpy().squeeze())
+                logits = model(torsion_angles, Ca_coord, distance, mask, seq)
+                tmp_prob = F.softmax(logits/0.1, dim = 2)
+                prob = F.softmax(logits, dim = 2)
+        preds.append(prob.cpu().detach().numpy().squeeze())
+        tmp_preds.append(tmp_prob.cpu().detach().numpy().squeeze())
         gts.append(seq.cpu().detach().numpy())
     perp = perplexity(preds, gts)
-    rec = recovery(preds, gts)
+    rec = recovery(tmp_preds, gts)
     print(perp)
     print(rec)
         

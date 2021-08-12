@@ -17,12 +17,12 @@ class EnNet(torch.nn.Module):
         self.feat_dim = 64
         self.device = device
 
-        self.En_encoder_1 = EnTransformer(
+        self.SEn_encoder_1 = EnTransformer(
             dim = self.feat_dim,
             depth = 4,
-            dim_head = 64,
             heads = 8,
-            coors_hidden_dim = 64,
+            dim_head = 128,
+            coors_hidden_dim = 32,
             neighbors = 30,
             edge_dim = 1,
         )
@@ -60,7 +60,7 @@ class EnNet(torch.nn.Module):
         in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
         in_feats = self.feat_enc(in_feats)
         #in_feats = self.PE(in_feats)
-        enc_out, enc_coor = self.En_encoder_1(in_feats, coors, edges, mask)
+        enc_out, enc_coor = self.SEn_encoder_1(in_feats, coors, edges, mask)
 
 
         
@@ -71,9 +71,8 @@ class EnNet(torch.nn.Module):
         #decoder_out = self.decoder(tgt = tgt_embed, memory = enc_out, tgt_mask = mask).permute(1,0,2)
         #decoder_out = self.En_decoder(enc_out, enc_coor, edges, mask)[0]
         logits = self.classifier(enc_out)
-        log_prob = F.softmax(logits, dim = 2)
-
-        return log_prob
+        
+        return logits
         
 
 
