@@ -10,27 +10,29 @@ def sample(pred_dist):
     out_idx = torch.multinomial(torch.tensor(pred_dist), 1)
     return out_idx
 
-def recovery(pred, gts):
+def recovery(pred, gts, masks):
     accuracy = []
     for i, pred in enumerate(preds):
         gt = gts[i]
+        mask = masks[i]
         c = 0
-        for j in range(gt.shape[0]):
+        for j in range(mask.sum()):
             pos_gt = gt[j,:]
             pos_pred = pred[j,:]
             gt_id = np.argmax(pos_gt)
             pred_id = np.argmax(pos_pred)
             if gt_id==pred_id:
                 c += 1
-        accuracy.append(c/gt.shape[0] * 1.0)
+        accuracy.append(c/mask.sum() * 1.0)
     recovery = np.mean(accuracy)
     return recovery
 
-def perplexity(preds, gts):
+def perplexity(preds, gts, masks):
     prob = []
     for i, pred in enumerate(preds):
         gt = gts[i]
-        for j in range(gt.shape[0]):
+        mask = masks[i]
+        for j in range(mask.sum()):
             pos_gt = gt[j,:]
             pos_pred = pred[j,:]
             gt_id = np.argmax(pos_gt)
@@ -61,22 +63,24 @@ if __name__ == '__main__':
     tmp_preds = []
     preds = []
     gts = []
+    masks = []
     pbar = tqdm.tqdm(total = test_dset.__len__())
-    for seq, Ca_coord, torsion_angles, distance in test_dset:
+    for seq, Ca_coord, torsion_angles, distance, pad_mask in test_dset:
         pbar.update()
         Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
-        mask = torch.ones(1, seq.size(0)).bool().to(device) 
+        pad_mask = pad_mask.unsqueeze(0).to(device)
         #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
-                logits = model(torsion_angles, Ca_coord, distance, mask, seq)
+                logits = model(torsion_angles, Ca_coord, distance, pad_mask, seq)
                 tmp_prob = F.softmax(logits/0.1, dim = 2)
                 prob = F.softmax(logits, dim = 2)
         preds.append(prob.cpu().detach().numpy().squeeze())
         tmp_preds.append(tmp_prob.cpu().detach().numpy().squeeze())
         gts.append(seq.cpu().detach().numpy())
-    perp = perplexity(preds, gts)
-    rec = recovery(tmp_preds, gts)
+        masks.append(pad_mask.cpu().detach().numpy().squeeze())
+    perp = perplexity(preds, gts, masks)
+    rec = recovery(tmp_preds, gts, masks)
     print(perp)
     print(rec)
         

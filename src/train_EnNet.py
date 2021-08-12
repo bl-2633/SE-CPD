@@ -26,18 +26,15 @@ def train(param_dict, epoch, model_path):
 
     total_loss = 0
     s = 0
-    for seq, Ca_coord, torsion_angles, distance in train_loader:
+    for seq, Ca_coord, torsion_angles, distance, mask in train_loader:
         optimizer.zero_grad()
         seq, Ca_coord, torsion_angles, distance = seq.to(device), Ca_coord.to(device), torsion_angles.to(device), distance.unsqueeze(-1).to(device)
-        mask = torch.ones(1, seq.size(1)).bool().to(device) 
+        mask = mask.to(device)
+        #mask = torch.ones(1, seq.size(1)).bool().to(device) 
         #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask, seq)
-            loss = loss_fn(out, seq)
-        step += 1
-        rate = 2 * (64 ** (-0.5) * min(step ** (-0.5), step * 10000 ** (-1.5)))
-        for p in optimizer.param_groups:
-            p['lr'] = rate
+            loss = loss_fn(out, seq, mask)
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -49,13 +46,14 @@ def train(param_dict, epoch, model_path):
         
     val_loss = []
     model.eval()
-    for seq, Ca_coord, torsion_angles, distance in val_loader:
+    for seq, Ca_coord, torsion_angles, distance, mask in val_loader:
         seq, Ca_coord, torsion_angles, distance = seq.to(device), Ca_coord.to(device), torsion_angles.to(device), distance.unsqueeze(-1).to(device)
-        mask = torch.ones(1, seq.size(1)).bool().to(device)
+        mask = mask.to(device)
+        #mask = torch.ones(1, seq.size(1)).bool().to(device)
         #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             out = model(torsion_angles, Ca_coord, distance, mask, seq)
-            loss = loss_fn(out, seq)
+            loss = loss_fn(out, seq, mask)
         val_loss.append(loss.item())
     pbar.set_description(str(epoch) + '/' + str(np.mean(val_loss))[:6])
 
@@ -80,15 +78,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     train_set = data_loader.CATH_data(feat_dir = '../data/features/', partition = 'train')
     val_set = data_loader.CATH_data(feat_dir = '../data/features/', partition = 'validation')
-    train_set = DataLoader(train_set, batch_size = 1, num_workers = 5, shuffle=True)
-    val_set = DataLoader(val_set, batch_size = 1, num_workers = 5, shuffle = False)
+    train_set = DataLoader(train_set, batch_size = 6, num_workers = 5, shuffle=True)
+    val_set = DataLoader(val_set, batch_size = 6, num_workers = 5, shuffle = False)
 
 
     device = torch.device('cuda:'+ args.Device)
     model = EnNet.EnNet(device = device).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr = 1e-5)
-    loss_fn = NLL_loss.NLL_loss()
-    model_out = '../trained_models/EnTransformers/EnNet_4_NLL'
+    optimizer = optim.AdamW(model.parameters(), lr = 1e-4)
+    loss_fn = BCE_loss.BCE_loss()
+    model_out = '../trained_models/EnTransformers/EnNet_4_BCE'
 
     param_dict = {
         'train_epoch': 100,
