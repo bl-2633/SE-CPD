@@ -17,25 +17,26 @@ class EnNet(torch.nn.Module):
         self.feat_dim = 64
         self.device = device
 
-        self.SEn_encoder_1 = EnTransformer(
+        self.En_encoder = EnTransformer(
             dim = self.feat_dim,
             depth = 4,
             heads = 8,
             dim_head = 128,
             coors_hidden_dim = 32,
             neighbors = 30,
-            edge_dim = 1,
+            edge_dim = 17,
         )
 
 
-        #self.En_decoder = EnTransformer(
-        #    dim = self.feat_dim,
-        #    depth = 4,
-        #    dim_head =64,
-        #    heads = 8,
-        #    neighbors = 30,
-        #    edge_dim = 1
-        #)
+        self.En_decoder = EnTransformer(
+            dim = self.feat_dim,
+            depth = 4,
+            dim_head =128,
+            heads = 8,
+            coors_hidden_dim = 32,
+            neighbors = 30,
+            edge_dim = 17
+        )
 
         #self.decoder = nn.TransformerDecoderLayer(self.feat_dim, 4)
         #self.PE = PE_module.PositionalEncoding(d_model = self.feat_dim)
@@ -60,7 +61,7 @@ class EnNet(torch.nn.Module):
         in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
         in_feats = self.feat_enc(in_feats)
         #in_feats = self.PE(in_feats)
-        enc_out, enc_coor = self.SEn_encoder_1(in_feats, coors, edges, mask)
+        enc_out, enc_coor = self.En_encoder(in_feats, coors, edges, mask)
 
 
         
@@ -69,8 +70,8 @@ class EnNet(torch.nn.Module):
         #mask = utils.generate_square_subsequent_mask(seq_len).to(self.device)
         #tgt_embed = self.PE(self.tgt_embed(seq)).permute(1,0,2)
         #decoder_out = self.decoder(tgt = tgt_embed, memory = enc_out, tgt_mask = mask).permute(1,0,2)
-        #decoder_out = self.En_decoder(enc_out, enc_coor, edges, mask)[0]
-        logits = self.classifier(enc_out)
+        decoder_out = self.En_decoder(enc_out, enc_coor, edges, mask)[0]
+        logits = self.classifier(decoder_out)
         
         return logits
         

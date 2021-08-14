@@ -69,7 +69,7 @@ if __name__ == '__main__':
         pbar.update()
         Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         pad_mask = pad_mask.unsqueeze(0).to(device)
-        #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
+        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
                 logits = model(torsion_angles, Ca_coord, distance, pad_mask, seq)
