@@ -8,69 +8,86 @@ import numpy as np
 import torch.nn.functional as F
 import sys
 sys.path.append(dir_path)
-import PE_module
+import PE_module, RBF_func
 import utils
 
 class EnNet(torch.nn.Module):
     def __init__(self, device):
         super().__init__()
-        self.feat_dim = 64
+        self.feat_dim = 128
         self.device = device
+
+        #self.En_encoder = SE3Transformer(
+        #    dim = self.feat_dim,
+        #    depth = 2,
+        #    heads = 4,
+        #    num_degrees = 1,
+        #    edge_dim = 17,
+        #)
+
+
+        #self.En_decoder = SE3Transformer(
+        #    dim = self.feat_dim,
+        #    depth = 2,
+        #    heads = 4,
+        #    num_degrees = 1,
+        #    edge_dim = 17,
+        #)
 
         self.En_encoder = EnTransformer(
             dim = self.feat_dim,
-            depth = 4,
+            depth = 6,
             heads = 8,
-            dim_head = 128,
-            coors_hidden_dim = 32,
-            neighbors = 30,
-            edge_dim = 17,
+            edge_dim = 16,
+            dim_head = self.feat_dim,
+            neighbors = 30
         )
 
 
         self.En_decoder = EnTransformer(
             dim = self.feat_dim,
-            depth = 4,
-            dim_head =128,
+            depth = 6,
             heads = 8,
-            coors_hidden_dim = 32,
-            neighbors = 30,
-            edge_dim = 17
+            edge_dim = 16,
+            dim_head = self.feat_dim,
+            neighbors = 30
         )
-
-        #self.decoder = nn.TransformerDecoderLayer(self.feat_dim, 4)
-        #self.PE = PE_module.PositionalEncoding(d_model = self.feat_dim)
+        self.RBF = RBF_func.RBF(Device = device)
+        self.decoder = nn.TransformerDecoderLayer(self.feat_dim, 4)
+        self.PE = PE_module.PositionalEncoding(d_model = self.feat_dim)
 
         # Input node feature encoder
         self.feat_enc = nn.Sequential(
-            nn.Linear(6, self.feat_dim),
+            nn.Linear(6, self.feat_dim, bias = True),
             nn.ReLU(inplace = True)
         )
-        #self.tgt_embed = nn.Sequential(
-        #    nn.Linear(20, self.feat_dim),
-        #    nn.LeakyReLU(inplace = True)
-        #)
+        self.tgt_embed = nn.Sequential(
+            nn.Linear(20, self.feat_dim, bias = True),
+            nn.LeakyReLU(inplace = True)
+        )
         self.classifier = nn.Sequential(
-            nn.Linear(self.feat_dim, 20),
+            nn.Linear(self.feat_dim, 20, bias = True),
         )
 
 
-    def forward(self, feats, coors, edges, mask, seq):
-        seq_len = seq.size(1)
+    def forward(self, feats, coors, edges, mask, seq_shifted):
+        seq_len = seq_shifted.size(1)
         # encoder 
         in_feats =torch.cat([torch.sin(feats), torch.cos(feats)], axis = -1)
         in_feats = self.feat_enc(in_feats)
-        #in_feats = self.PE(in_feats)
-        enc_out, enc_coor = self.En_encoder(in_feats, coors, edges, mask)
+        in_feats = self.PE(in_feats)
+        edges = self.RBF(edges)
+        enc_out, enc_coors = self.En_encoder(in_feats, coors, edges, mask)
 
-
-        
         # decoder
         # masked attention encoder for teacher forcing
-        #mask = utils.generate_square_subsequent_mask(seq_len).to(self.device)
-        #tgt_embed = self.PE(self.tgt_embed(seq)).permute(1,0,2)
-        #decoder_out = self.decoder(tgt = tgt_embed, memory = enc_out, tgt_mask = mask).permute(1,0,2)
-        decoder_out = self.En_decoder(enc_out, enc_coor, edges, mask)[0]
+        #ar_mask = utils.generate_square_subsequent_mask(seq_len).to(self.device)
+        #tgt_embed = self.PE(self.tgt_embed(seq_shifted)).permute(1,0,2)
+        #decoder_out = self.decoder(tgt = tgt_embed, memory = enc_out, tgt_mask = ar_mask, 
+        #                            tgt_key_padding_mask = ~mask,
+        #                            memory_key_padding_mask = ~mask).permute(1,0,2)
+        
+        decoder_out = self.En_decoder(enc_out, enc_coors, edges, mask)[0]
         logits = self.classifier(decoder_out)
         
         return logits
@@ -110,7 +127,7 @@ if __name__ == '__main__':
         for i in range(10):
             feats = torch.randn(1, 500, 3).to(device)
             coors = torch.randn(1, 500, 3).to(device)
-            edges = torch.randn(1, 500, 500, 17).to(device)
+            edges = torch.randn(1, 500, 500, 1).to(device)
             mask = torch.ones(1, 500).bool().to(device)
             seq = torch.randn(1, 500, 20).to(device)
             #out_feats, out_coors = model(feats, coors, edges, mask,seq)

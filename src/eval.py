@@ -65,14 +65,14 @@ if __name__ == '__main__':
     gts = []
     masks = []
     pbar = tqdm.tqdm(total = test_dset.__len__())
-    for seq, Ca_coord, torsion_angles, distance, pad_mask in test_dset:
+    for seq, seq_shifted,  Ca_coord, torsion_angles, distance, pad_mask in test_dset:
         pbar.update()
-        Ca_coord, torsion_angles, distance = Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
+        seq_shifted, Ca_coord, torsion_angles, distance = seq_shifted.unsqueeze(0).to(device), Ca_coord.unsqueeze(0).to(device), torsion_angles.unsqueeze(0).to(device), distance.unsqueeze(0).unsqueeze(-1).to(device)
         pad_mask = pad_mask.unsqueeze(0).to(device)
-        distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
+        #distance = fourier_encode(distance, num_encodings  = 8, include_self = True)
         with torch.cuda.amp.autocast():
             with torch.no_grad():
-                logits = model(torsion_angles, Ca_coord, distance, pad_mask, seq)
+                logits = model(torsion_angles, Ca_coord, distance, pad_mask, seq_shifted)
                 tmp_prob = F.softmax(logits/0.1, dim = 2)
                 prob = F.softmax(logits, dim = 2)
         preds.append(prob.cpu().detach().numpy().squeeze())

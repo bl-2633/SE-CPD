@@ -24,8 +24,10 @@ class CATH_data(D.Dataset):
         Ca_coord = feat['Ca_coord']
         torsion_angles = feat['torsion_angles']
         distance = feat['distance']
+        
         seq_len = seq.size(0)
         pad_len = self.MAX_LEN - seq_len
+        seq = torch.cat([torch.zeros(1,20), seq], dim = 0)
         padder_1d = torch.nn.ConstantPad1d((0,pad_len), 0)
         padder_2d = torch.nn.ConstantPad2d((0, pad_len, 0, pad_len), 0)
         seq, Ca_coord, torsion_angles = padder_1d(seq.T).T, padder_1d(Ca_coord.T).T, padder_1d(torsion_angles.T).T
@@ -33,8 +35,9 @@ class CATH_data(D.Dataset):
 
         mask = torch.zeros(self.MAX_LEN)
         mask[:seq_len] = 1
-
-        return seq, Ca_coord, torsion_angles, distance, mask.bool()
+        seq_orig = seq[1:,:]
+        seq_shifted = seq[:-1, :] 
+        return seq_orig, seq_shifted, Ca_coord, torsion_angles, distance, mask.bool()
     
     def __len__(self):
         return len(self.chain_list)
@@ -43,8 +46,9 @@ class CATH_data(D.Dataset):
 if __name__ == '__main__':
     dset = CATH_data(feat_dir='../../data/features/', partition = 'train')
     pbar = tqdm.tqdm(total = dset.__len__())
-    for seq, Ca_coord, torsion_angles, distance, mask in dset:
+    for seq, seq_shifted, Ca_coord, torsion_angles, distance, mask in dset:
         print(seq.size())
+        print(seq_shifted.size())
         print(Ca_coord.size())
         print(torsion_angles.size())
         print(distance.size())
