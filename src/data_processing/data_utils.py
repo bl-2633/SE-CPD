@@ -98,6 +98,9 @@ def cif_reader(pdb_file,chain_id):
                 seq_len += 1
             break
 
+    Ca_dir = Ca_direction(Ca_dict)
+    Sc_dir = side_chain_direction(atom_dict)
+
     angle_dict = dict()
     for i in range(0,seq_len):
         pre_res = None
@@ -112,8 +115,7 @@ def cif_reader(pdb_file,chain_id):
         angle_dict[i] = angles
 
     dist_mtx = calc_contact(Ca_dict)
-
-    return res_dict, Ca_dict, angle_dict, dist_mtx
+    return res_dict, Ca_dict, angle_dict, dist_mtx, Ca_dir, Sc_dir
 
 def aa2onehot(seq):
     aa2index = {
@@ -145,6 +147,43 @@ def aa2onehot(seq):
         onehot[i][idx] = 1
     return onehot
 
+def unit_vec(vec):
+    '''
+    compute the unit vector in the direction of the input vector
+    '''
+    return(np.divide(vec, np.linalg.norm(vec)))
+
+def Ca_direction(Ca_dict):
+    seq_len = len(Ca_dict)
+    fw_vec = []
+    bw_vec = []
+    bw_vec.append(np.zeros(3))
+    for i in Ca_dict:
+        if i < seq_len - 1:
+            fw_vec.append(unit_vec(Ca_dict[i+1] - Ca_dict[i]))
+        if i > 0:
+            bw_vec.append(unit_vec(Ca_dict[i-1] - Ca_dict[i]))
+    fw_vec.append(np.zeros(3))
+    
+    Ca_direction = np.concatenate((fw_vec, bw_vec), axis = -1)
+    
+    return Ca_direction
+
+def side_chain_direction(atom_dict):
+    Sc_dir = []
+    for i in atom_dict:
+        C = atom_dict[i]['C'].get_vector().get_array()
+        Ca = atom_dict[i]['CA'].get_vector().get_array()
+        N = atom_dict[i]['N'].get_vector().get_array()
+
+        c, n = unit_vec(C - Ca), unit_vec(N - Ca)
+        bisector = unit_vec(c + n)
+        perp = unit_vec(np.cross(c, n))
+        vec = -bisector * np.sqrt(1/3) - perp * np.sqrt(2/3)
+        Sc_dir.append(vec)
+    Sc_dir  = np.array(Sc_dir)
+    return Sc_dir
+
 def save_feat(chain_info):
     save_path = '../../data/features/'
     data_dir = '../../data/PDB/'
@@ -164,19 +203,20 @@ def save_feat(chain_info):
     one_hot = torch.from_numpy(aa2onehot(seq)).half()
     angles = torch.from_numpy(np.array(angles)).half()
     dist_mtx = torch.from_numpy(feats[3]).half()
+    vec_feat = torch.cat([torch.from_numpy(feats[4]).half(), torch.from_numpy(feats[5]).half()], dim = -1)
 
     assert one_hot.size(0) <= 500, 'sequence too long'
 
-    feat_dict = {'seq':one_hot, 'Ca_coord':Ca_coord, 'torsion_angles':angles, 'distance':dist_mtx}
+    feat_dict = {'seq':one_hot, 'Ca_coord':Ca_coord, 'torsion_angles':angles, 'distance':dist_mtx, 'vec_feats':vec_feat}
     
     torch.save(feat_dict, save_path+ent+'-'+chain_id)
 
 def feature_gen():
     chain_dict = read_json('../../data/chain_set_splits.json')
 
-    pool = Pool(processes = 30)
+    pool = Pool(processes = 24)
     result_list_tqdm = []
-    for result in tqdm.tqdm(pool.imap_unordered(save_feat, chain_dict['test']), total=len(chain_dict['test'])):
+    for result in tqdm.tqdm(pool.imap_unordered(save_feat, chain_dict['validation']), total=len(chain_dict['validation'])):
         result_list_tqdm.append(result)
 
 def data_check():
@@ -207,3 +247,4 @@ def rot_mtx(alpha, beta, gamma):
 
 if __name__ == '__main__':
     feature_gen()
+

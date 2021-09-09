@@ -51,9 +51,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--Model_path', type = str, help='path to the model to be tested'
     )
+
     args = parser.parse_args() 
     device = torch.device('cuda:' + args.Device)
     model = EnNet.EnNet(device = device)
+    
     state_dcit = torch.load(args.Model_path, map_location = torch.device('cpu'))
     model.load_state_dict(state_dcit['state_dict'])
     model.to(device).eval()

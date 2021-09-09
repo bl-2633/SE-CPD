@@ -14,6 +14,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 0, 1::2] = torch.cos(position * div_term)
         pe = pe.permute(1,0,2)
         self.register_buffer('pe', pe)
+
         
     def forward(self, x):
         x = x + self.pe[:,:x.size(1),:]

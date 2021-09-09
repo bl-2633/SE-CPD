@@ -24,20 +24,21 @@ class CATH_data(D.Dataset):
         Ca_coord = feat['Ca_coord']
         torsion_angles = feat['torsion_angles']
         distance = feat['distance']
+        vec_feats = feat['vec_feats']
         
         seq_len = seq.size(0)
         pad_len = self.MAX_LEN - seq_len
         seq = torch.cat([torch.zeros(1,20), seq], dim = 0)
         padder_1d = torch.nn.ConstantPad1d((0,pad_len), 0)
         padder_2d = torch.nn.ConstantPad2d((0, pad_len, 0, pad_len), 0)
-        seq, Ca_coord, torsion_angles = padder_1d(seq.T).T, padder_1d(Ca_coord.T).T, padder_1d(torsion_angles.T).T
+        seq, Ca_coord, torsion_angles, vec_feats = padder_1d(seq.T).T, padder_1d(Ca_coord.T).T, padder_1d(torsion_angles.T).T, padder_1d(vec_feats.T).T
         distance = padder_2d(distance)
 
         mask = torch.zeros(self.MAX_LEN)
         mask[:seq_len] = 1
         seq_orig = seq[1:,:]
         seq_shifted = seq[:-1, :] 
-        return seq_orig, seq_shifted, Ca_coord, torsion_angles, distance, mask.bool()
+        return seq_orig.float(), seq_shifted.float(), Ca_coord.float(), torsion_angles.float(), vec_feats.float(), distance.float(), mask.bool()
     
     def __len__(self):
         return len(self.chain_list)
